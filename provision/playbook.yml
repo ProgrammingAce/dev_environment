@@ -1,0 +1,83 @@
+---
+
+- hosts: all
+  become: yes
+  become_method: sudo
+  vars:
+    username: USERNAME
+    dotfile_repo_path: REPO_FOR_DOTFILES
+    vagrant_ssh_key: PATH_TO_SSH_PUB_KEY
+  tasks:
+    - name: Install software
+      yum:
+        name={{ item }}
+        state=latest
+      with_items:
+        - tree
+        - git
+        - dstat
+        - nmap
+        - curl
+        - wget
+        - vim-enhanced
+        - python-pip
+        - python-simplejson
+        - awscli
+        - ansible
+        - ansible-lint
+        - irssi
+
+    - name: Create user
+      user:
+        name={{ username }}
+        group=wheel
+
+    - name: Add ssh key to user
+      authorized_key:
+        user={{ username }}
+        key="{{ lookup('file', vagrant_ssh_key) }}"
+
+    - name: Grant user sudo rights
+      template:
+        src=sudoers
+        dest=/etc/sudoers.d/{{ username }}
+        owner=root
+        group=root
+        mode=0644
+
+    - name: Checkout dotfile repo
+      git:
+        repo={{ dotfile_repo_path }}
+        dest=/tmp/.dotfiles
+        accept_hostkey=true
+      become: no
+
+    - name: Move dotfiles repo to user directory
+      command: mv /tmp/.dotfiles ~{{ username }}/.dotfiles
+        creates=~{{ username }}/.dotfiles
+
+    - name: Set file permissions for dotfiles
+      file:
+        path=~{{ username }}/.dotfiles
+        state=directory
+        owner={{ username }}
+        recurse=yes
+
+    - name: Symlink the shared directory
+      file:
+        src=/code
+        dest=~{{ username }}/code
+        state=link
+
+    - name: Symlink dotfiles
+      file:
+        src=~{{ username }}/.dotfiles/{{ item.src }}
+        dest=~{{ username }}/{{ item.dest }}
+        state=link
+        force=yes
+      with_items:
+        - { src: 'vim',                dest: '.vim' }
+        - { src: 'viminfo',            dest: '.viminfo' }
+        - { src: 'vimrc',              dest: '.vimrc' }
+        - { src: 'irssi',              dest: '.irssi' }
+        - { src: 'bashrc.linux',       dest: '.bashrc' }
